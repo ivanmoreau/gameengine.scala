@@ -14,7 +14,7 @@ object game extends ScalaModule {
     ivy"co.fs2::fs2-core:3.4.0",
     ivy"co.fs2::fs2-io:3.4.0",
     ivy"com.badlogicgames.gdx:gdx:1.11.0",
-    ivy"com.badlogicgames.gdx:gdx-backend-lwjgl3:1.11.0",
-    ivy"com.badlogicgames.gdx:gdx-platform:1.11.0;classifier=natives-desktop"
+    ivy"com.badlogicgames.gdx:gdx-backend-lwjgl3:1.12.0",
+    ivy"com.badlogicgames.gdx:gdx-platform:1.12.0;classifier=natives-desktop"
   )
 }
