@@ -1,17 +1,21 @@
 package com.ivmoreau.game
 
-import cats.effect.{IO, IOLocal}
+import cats.effect.{IO, IOLocal, Ref}
 import com.ivmoreau.game.input.Event
 import fs2.concurrent.Topic
 import org.lwjgl.glfw.{Callbacks, GLFW, GLFWErrorCallback}
 import org.lwjgl.opengl.{GL, GL11}
+import org.typelevel.log4cats.Logger
+import org.typelevel.log4cats.slf4j.Slf4jLogger
 
 import java.util.concurrent.Executor
+import java.util.concurrent.atomic.AtomicReference
+import scala.annotation.tailrec
 import scala.concurrent.ExecutionContext
 import scala.util.Using
 
 private object IOGameGlobals:
-  val glExecutionContext: IOLocal[(ExecutionContext, Long)] = IOLocal(
+  val glctx: IOLocal[(ExecutionContext, Long)] = IOLocal(
     ExecutionContext.global,
     0L
   ).unsafeRunSync()(using cats.effect.unsafe.implicits.global)
@@ -26,22 +30,26 @@ case class Configuration(
 
 abstract class IOGame[State]:
 
+  implicit def logger: Logger[IO] = Slf4jLogger.getLogger[IO]
+
   final def main(args: Array[String]): Unit =
-    System.out.println("Using LWJGL " + org.lwjgl.Version.getVersion + "!")
-    System.out.println(
-      "Using Scala stdlib " + scala.util.Properties.versionString + "!"
-    )
+
+    (logger.info("Starting game") *>
+      logger.info("Using LWJGL " + org.lwjgl.Version.getVersion + "!") *>
+      logger.info(
+        "Using Scala stdlib " + scala.util.Properties.versionString + "!"
+      ) *> logger.info("Initializing GLFW..."))
+      .unsafeRunSync()(using cats.effect.unsafe.implicits.global)
 
     val ioEvent = Topic[IO, Event]
       .unsafeRunSync()(using cats.effect.unsafe.implicits.global)
 
     init(ioEvent)
 
-    // This line is critical for LWJGL's interoperation with GLFW's
-    // OpenGL context, or any context that is managed externally.
-    // LWJGL detects the context that is current in the current thread,
-    // creates the GLCapabilities instance and makes the OpenGL
-    // bindings available for use.
+    logger
+      .info("GLFW initialized")
+      .unsafeRunSync()(using cats.effect.unsafe.implicits.global)
+
     GL.createCapabilities
 
     import java.util.concurrent.ConcurrentLinkedQueue
@@ -49,33 +57,70 @@ abstract class IOGame[State]:
     val queue = new ConcurrentLinkedQueue[Runnable]()
 
     println(Thread.currentThread().getName())
+
     val ecGL = ExecutionContext.fromExecutor(new Executor {
       override def execute(command: Runnable): Unit =
         queue.add(command)
     })
 
-    println("GL Context: " + GL.getCapabilities.GL_ARB_compute_shader)
+    val stateRef: Ref[IO, State] = Ref.unsafe[IO, State](null.asInstanceOf)
 
-    IOGameGlobals.glExecutionContext
+    // Setting up the game and then executing the render loop
+    (logger.info("Setting internal execution context for LWJGL...") *>
+      IOGameGlobals.glctx
+        .set(ecGL, window)
+        .flatMap { _ =>
+          logger.info("Creating...") *>
+            create().flatMap { state =>
+              logger.info("Game initialized") *>
+                stateRef.set(state) *>
+                logger.info("Executing render loop...") *>
+                stateRef.get
+                  .flatMap(render)
+                  .whileM_(IO.pure(true))
+            }
+        }
+        .start).unsafeRunAndForget()(using cats.effect.unsafe.implicits.global)
+
+    // Setting up the event listener stream
+    IOGameGlobals.glctx
       .set(ecGL, window)
       .flatMap { _ =>
-        println("Going to create")
-        create().flatMap { state =>
-          println("Going to render")
-          { render(state) *> IO(println("Im redenrinf")) }
-            .whileM_(IO.pure(true))
-        }
+        logger.info("Executing IO event listener...") *>
+          ioEvent
+            .subscribe(1)
+            .evalMap { event =>
+              logger.trace(s"Received event $event") *>
+                onEvent(event)(stateRef)
+            }
+            .compile
+            .drain
       }
+      .start
       .unsafeRunAndForget()(using cats.effect.unsafe.implicits.global)
 
-    def secretLoop(): Unit = {
+    // Setting up the update loop
+    IOGameGlobals.glctx
+      .set(ecGL, window)
+      .flatMap { _ =>
+        logger.info("Executing update loop...") *>
+          update(stateRef)
+            .whileM_(IO.pure(true))
+      }
+      .start
+      .unsafeRunAndForget()(using cats.effect.unsafe.implicits.global)
+
+    @tailrec
+    def secretLoop(): Unit =
       val command = queue.poll()
       if (command != null) {
         command.run()
       }
       GLFW.glfwPollEvents()
-      secretLoop()
-    }
+
+      if (!GLFW.glfwWindowShouldClose(window))
+        secretLoop()
+    end secretLoop
 
     secretLoop()
 
@@ -86,55 +131,29 @@ abstract class IOGame[State]:
     // Terminate GLFW and free the error callback
     GLFW.glfwTerminate()
     GLFW.glfwSetErrorCallback(null).free
-
-    ()
   end main
 
   private var window: Long = 0
 
-  private def loop(): Unit = {
-    // This line is critical for LWJGL's interoperation with GLFW's
-    // OpenGL context, or any context that is managed externally.
-    // LWJGL detects the context that is current in the current thread,
-    // creates the GLCapabilities instance and makes the OpenGL
-    // bindings available for use.
-    GL.createCapabilities
-    // Set the clear color
-    GL11.glClearColor(1.0f, 0.0f, 0.0f, 0.0f)
-    // Run the rendering loop until the user has attempted to close
-    // the window or has pressed the ESCAPE key.
-    while (!GLFW.glfwWindowShouldClose(window)) {
-      GL11.glClear(
-        GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT
-      ) // clear the framebuffer
-
-      GLFW.glfwSwapBuffers(window) // swap the color buffers
-
-      // Poll for window events. The key callback above will only be
-      // invoked during this call.
-      GLFW.glfwPollEvents
-    }
-  }
-
   private def init(ioEvent: Topic[IO, Event]): Unit =
     GLFWErrorCallback.createPrint(System.err).set()
-    if (!org.lwjgl.glfw.GLFW.glfwInit()) then
+    if (!GLFW.glfwInit()) then
       throw new IllegalStateException("Unable to initialize GLFW")
 
-    org.lwjgl.glfw.GLFW.glfwDefaultWindowHints()
-    org.lwjgl.glfw.GLFW.glfwWindowHint(
-      org.lwjgl.glfw.GLFW.GLFW_VISIBLE,
-      org.lwjgl.glfw.GLFW.GLFW_TRUE
+    GLFW.glfwDefaultWindowHints()
+    GLFW.glfwWindowHint(
+      GLFW.GLFW_VISIBLE,
+      GLFW.GLFW_TRUE
     )
-    org.lwjgl.glfw.GLFW.glfwWindowHint(
-      org.lwjgl.glfw.GLFW.GLFW_RESIZABLE,
+    GLFW.glfwWindowHint(
+      GLFW.GLFW_RESIZABLE,
       configuration.resizable match {
-        case true  => org.lwjgl.glfw.GLFW.GLFW_TRUE
-        case false => org.lwjgl.glfw.GLFW.GLFW_FALSE
+        case true  => GLFW.GLFW_TRUE
+        case false => GLFW.GLFW_FALSE
       }
     )
 
-    window = org.lwjgl.glfw.GLFW.glfwCreateWindow(
+    window = GLFW.glfwCreateWindow(
       configuration.width,
       configuration.height,
       configuration.title,
@@ -204,7 +223,8 @@ abstract class IOGame[State]:
 
   def create(): IO[State]
   def render(state: State): IO[Unit]
+  def onEvent(event: Event)(state: Ref[IO, State]): IO[Unit]
+  def update(state: Ref[IO, State]): IO[Unit]
   def dispose(): IO[Unit]
-  def update(state: State): IO[State]
 
 end IOGame

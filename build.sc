@@ -15,6 +15,12 @@ object game extends ScalaModule {
     ivy"co.fs2::fs2-io:3.4.0",
     ivy"com.badlogicgames.gdx:gdx:1.11.0",
     ivy"com.badlogicgames.gdx:gdx-backend-lwjgl3:1.12.0",
-    ivy"com.badlogicgames.gdx:gdx-platform:1.12.0;classifier=natives-desktop"
+    ivy"com.badlogicgames.gdx:gdx-platform:1.12.0;classifier=natives-desktop",
+    // "org.typelevel" %% "log4cats-slf4j"   % "2.6.0"
+    ivy"org.typelevel::log4cats-slf4j:2.6.0"
+  )
+
+  override def runIvyDeps = Agg(
+    ivy"org.slf4j:slf4j-log4j12:2.0.7"
   )
 }
