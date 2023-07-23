@@ -5,7 +5,7 @@ import org.lwjgl.opengl.GL11
 import com.ivmoreau.game.internal.IOGameGlobals
 import org.lwjgl.glfw.GLFW
 
-trait basic:
+private trait basic:
 
   def setClearColor(color: Color): IO[Unit] =
     IOGameGlobals.glctx.get.flatMap { case (ecGL, window) =>
