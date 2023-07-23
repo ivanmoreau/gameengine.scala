@@ -2,10 +2,10 @@ package com.ivmoreau.game
 
 import cats.effect.{IO, IOLocal, Ref}
 import com.ivmoreau.game.input.Event
-import com.ivmoreau.game.internal.IOGameGlobals
+import com.ivmoreau.game.internal.{IOGameGlobals, MemoryStackI}
 import fs2.concurrent.Topic
 import org.lwjgl.glfw.{Callbacks, GLFW, GLFWErrorCallback}
-import org.lwjgl.opengl.{GL, GL11}
+import org.lwjgl.opengl.{GL, GL11, GL30}
 import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 
@@ -129,6 +129,22 @@ trait RawIOGame[State]:
 
     GLFW.glfwDefaultWindowHints()
     GLFW.glfwWindowHint(
+      GLFW.GLFW_CONTEXT_VERSION_MAJOR,
+      3
+    )
+    GLFW.glfwWindowHint(
+      GLFW.GLFW_CONTEXT_VERSION_MINOR,
+      2
+    )
+    GLFW.glfwWindowHint(
+      GLFW.GLFW_OPENGL_PROFILE,
+      GLFW.GLFW_OPENGL_CORE_PROFILE
+    )
+    GLFW.glfwWindowHint(
+      GLFW.GLFW_OPENGL_FORWARD_COMPAT,
+      GLFW.GLFW_TRUE
+    )
+    GLFW.glfwWindowHint(
       GLFW.GLFW_VISIBLE,
       GLFW.GLFW_TRUE
     )
@@ -168,26 +184,24 @@ trait RawIOGame[State]:
     );
 
     // Get the thread stack and push a new frame
-    Using.resource(
-      org.lwjgl.system.MemoryStack.stackPush()
-    ) { stack =>
+    MemoryStackI.onStack { stack =>
       val pWidth = stack.mallocInt(1) // int*
       val pHeight = stack.mallocInt(1) // int*
 
       // Get the window size passed to glfwCreateWindow
-      org.lwjgl.glfw.GLFW.glfwGetWindowSize(
+      GLFW.glfwGetWindowSize(
         window,
         pWidth,
         pHeight
       )
 
       // Get the resolution of the primary monitor
-      val vidmode = org.lwjgl.glfw.GLFW.glfwGetVideoMode(
-        org.lwjgl.glfw.GLFW.glfwGetPrimaryMonitor()
+      val vidmode = GLFW.glfwGetVideoMode(
+        GLFW.glfwGetPrimaryMonitor()
       )
 
       // Center the window
-      org.lwjgl.glfw.GLFW.glfwSetWindowPos(
+      GLFW.glfwSetWindowPos(
         window,
         (vidmode.width() - pWidth.get(0)) / 2,
         (vidmode.height() - pHeight.get(0)) / 2
