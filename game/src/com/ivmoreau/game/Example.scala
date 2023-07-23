@@ -22,17 +22,14 @@ object Example extends IOGame[Int]:
   override def dispose(): IO[Unit] = IO.unit
 
   override def update(state: Ref[IO, Int]): IO[Unit] =
-    state.get.flatMap(s => Console[IO].println(s"Inside update!!"))
+    IO.unit
 
   override def onEvent(event: Event)(state: Ref[IO, Int]): IO[Unit] =
-    println(s"Inside onEvent $event")
     event match
       case Event.KeyDown(key: input.Key.A) =>
-        IO.sleep(1.seconds) *>
-          Console[IO].println("UP A") *> state.set(1)
+        Console[IO].println("UP A") *> state.set(1)
       case Event.KeyUp(key: input.Key.A) =>
-        IO.sleep(1.seconds) *>
-          Console[IO].println("Down A") *> state.set(0)
+        Console[IO].println("Down A") *> state.set(0)
       case _ =>
         Console[IO].println("Other") *> IO.pure(state)
 end Example

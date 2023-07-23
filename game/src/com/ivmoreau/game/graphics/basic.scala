@@ -2,7 +2,7 @@ package com.ivmoreau.game.graphics
 
 import cats.effect.IO
 import org.lwjgl.opengl.GL11
-import com.ivmoreau.game.IOGameGlobals
+import com.ivmoreau.game.internal.IOGameGlobals
 import org.lwjgl.glfw.GLFW
 
 trait basic:
@@ -10,10 +10,10 @@ trait basic:
   def setClearColor(color: Color): IO[Unit] =
     IOGameGlobals.glctx.get.flatMap { case (ecGL, window) =>
       IO {
-        println(Thread.currentThread().getName())
         GL11.glClearColor(color.red, color.green, color.blue, color.alpha)
       }.evalOn(ecGL)
     }
+  end setClearColor
 
   def clear(): IO[Unit] =
     IOGameGlobals.glctx.get.flatMap { case (ecGL, window) =>
@@ -23,5 +23,6 @@ trait basic:
         GLFW.glfwSwapBuffers(window)
       }.evalOn(ecGL)
     }
+  end clear
 
 end basic
