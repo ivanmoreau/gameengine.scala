@@ -30,6 +30,12 @@ enum Key(val code: Int):
   case X() extends Key(88)
   case Y() extends Key(89)
   case Z() extends Key(90)
+  case AsKey(override val code: Int) extends Key(code)
+
+  override def equals(obj: Any): Boolean = obj match
+    case k: Key => k.code == code
+    case _      => false
+  end equals
 end Key
 
 object Key:

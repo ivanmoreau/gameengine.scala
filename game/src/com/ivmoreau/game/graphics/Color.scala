@@ -13,3 +13,9 @@ enum Color(val red: Float, val green: Float, val blue: Float, val alpha: Float):
   case Orange() extends Color(1f, 0.78f, 0f, 1f)
   case Yellow() extends Color(1f, 1f, 0f, 1f)
   case Magenta() extends Color(1f, 0f, 1f, 1f)
+  case Argb(
+      override val red: Float,
+      override val green: Float,
+      override val blue: Float,
+      override val alpha: Float
+  ) extends Color(red, green, blue, alpha)
